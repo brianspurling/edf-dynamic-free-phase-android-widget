@@ -4,6 +4,8 @@ import android.content.Context
 import android.graphics.Bitmap
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.dp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.Image
@@ -33,7 +35,15 @@ import java.time.Instant
 
 class FreePhaseWidget : GlanceAppWidget() {
 
-    override val sizeMode: SizeMode = SizeMode.Exact
+    override val sizeMode: SizeMode = SizeMode.Responsive(
+        setOf(
+            DpSize(180.dp, 110.dp),  // small: 4x2 cells (target size)
+            DpSize(240.dp, 180.dp),  // medium-tall
+            DpSize(280.dp, 220.dp),  // medium-large
+            DpSize(380.dp, 290.dp),  // large (Brian's current 4-cell-wide × ~3-cell-tall)
+            DpSize(380.dp, 460.dp),  // extra-tall
+        )
+    )
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         // All suspending I/O happens here, before provideContent runs.
