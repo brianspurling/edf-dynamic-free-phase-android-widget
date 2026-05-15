@@ -51,8 +51,8 @@ object ChartCanvas {
         val pad = if (bucket == Bucket.Small) 4f * density else 12f * density
         val plot = RectF(pad, pad, w - pad, h - pad)
         if (bucket != Bucket.Small) {
-            plot.bottom -= 14f * density  // room for hour labels
-            plot.left += 24f * density    // room for y-axis labels
+            plot.bottom -= 18f * density  // room for hour labels
+            plot.left += 32f * density    // room for y-axis labels
         }
 
         val xStart = slots.first().validFrom.toEpochMilli()
@@ -74,8 +74,9 @@ object ChartCanvas {
         if (bucket == Bucket.Large && data.svtPence != null && data.svtPence <= yMax) {
             val svtPaint = Paint().apply {
                 color = theme.svt
-                strokeWidth = 1f * density
-                pathEffect = DashPathEffect(floatArrayOf(6f * density, 4f * density), 0f)
+                strokeWidth = 2f * density
+                isAntiAlias = true
+                pathEffect = DashPathEffect(floatArrayOf(8f * density, 5f * density), 0f)
                 style = Paint.Style.STROKE
             }
             val ySvt = y(data.svtPence)
@@ -84,7 +85,7 @@ object ChartCanvas {
 
         // tariff stepped line
         val tariffPaint = Paint().apply {
-            color = theme.tariff; strokeWidth = 2f * density
+            color = theme.tariff; strokeWidth = 3f * density
             style = Paint.Style.STROKE; isAntiAlias = true; strokeJoin = Paint.Join.MITER
         }
         val path = Path()
@@ -99,7 +100,7 @@ object ChartCanvas {
             // now marker — only draw if `now` is inside the data window
             val nowMillis = now.toEpochMilli()
             if (nowMillis in xStart..xEnd) {
-                val nowPaint = Paint().apply { color = theme.now; strokeWidth = 1f * density; style = Paint.Style.STROKE }
+                val nowPaint = Paint().apply { color = theme.now; strokeWidth = 2f * density; style = Paint.Style.STROKE; isAntiAlias = true }
                 c.drawLine(x(now), plot.top, x(now), plot.bottom, nowPaint)
             }
 
@@ -111,8 +112,8 @@ object ChartCanvas {
             val isStale = Duration.between(data.fetchedAt, now) > Duration.ofHours(26)
             val label = if (isStale) "⚠ stale ${timeFmt.format(data.fetchedAt)}:${"%02d".format(data.fetchedAt.atZone(zone).minute)}"
                         else "${data.fetchedAt.atZone(zone).hour}:${"%02d".format(data.fetchedAt.atZone(zone).minute)}"
-            val tp = TextPaint().apply { color = if (isStale) theme.stale else theme.text; textSize = 9f * density; isAntiAlias = true }
-            c.drawText(label, plot.right - tp.measureText(label), plot.top + 9f * density, tp)
+            val tp = TextPaint().apply { color = if (isStale) theme.stale else theme.text; textSize = 11f * density; isAntiAlias = true }
+            c.drawText(label, plot.right - tp.measureText(label), plot.top + 11f * density, tp)
         }
 
         return bmp
@@ -122,13 +123,13 @@ object ChartCanvas {
         c: Canvas, plot: RectF, slots: List<Slot>, xStart: Long, xEnd: Long, yMax: Double,
         theme: ChartTheme, density: Float,
     ) {
-        val axis = Paint().apply { color = theme.axis; strokeWidth = 1f * density }
-        val text = TextPaint().apply { color = theme.text; textSize = 9f * density; isAntiAlias = true }
+        val axis = Paint().apply { color = theme.axis; strokeWidth = 1.5f * density; isAntiAlias = true }
+        val text = TextPaint().apply { color = theme.text; textSize = 13f * density; isAntiAlias = true }
 
         // y-axis labels (3 ticks)
         listOf(0.0, yMax / 2.0, yMax).forEach { v ->
             val yp = plot.bottom - (v / yMax).toFloat() * plot.height()
-            c.drawText("${v.toInt()}p", plot.left - 22f * density, yp + 3f * density, text)
+            c.drawText("${v.toInt()}p", plot.left - 28f * density, yp + 4f * density, text)
         }
 
         // hour ticks at 00/06/12/18
@@ -137,8 +138,8 @@ object ChartCanvas {
             if (t.hour % 6 == 0) {
                 val xp = plot.left + (t.toInstant().toEpochMilli() - xStart).toFloat() / (xEnd - xStart) * plot.width()
                 if (xp in plot.left..plot.right) {
-                    c.drawLine(xp, plot.bottom, xp, plot.bottom + 3f * density, axis)
-                    c.drawText("%02d".format(t.hour), xp - 6f * density, plot.bottom + 11f * density, text)
+                    c.drawLine(xp, plot.bottom, xp, plot.bottom + 4f * density, axis)
+                    c.drawText("%02d".format(t.hour), xp - 8f * density, plot.bottom + 14f * density, text)
                 }
             }
             t = t.plusHours(1)
@@ -151,7 +152,7 @@ object ChartCanvas {
             val xp = plot.left + (b.validFrom.toEpochMilli() - xStart).toFloat() / (xEnd - xStart) * plot.width()
             val label = dateFmt.format(b.validFrom)
             val bold = TextPaint(text).apply { isFakeBoldText = true }
-            c.drawText(label, xp + 2f * density, plot.top + 11f * density, bold)
+            c.drawText(label, xp + 3f * density, plot.top + 14f * density, bold)
         }
     }
 }
