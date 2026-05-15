@@ -1,5 +1,12 @@
 package com.bspurling.freephase
 
 import android.app.Application
+import com.bspurling.freephase.worker.RefreshWorker
 
-class FreePhaseApp : Application()
+class FreePhaseApp : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        RefreshWorker.enqueueBootstrap(this)
+        RefreshWorker.schedulePeriodic(this)
+    }
+}
