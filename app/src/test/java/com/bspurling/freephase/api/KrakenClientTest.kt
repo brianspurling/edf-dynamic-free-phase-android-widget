@@ -7,6 +7,7 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -28,7 +29,8 @@ class KrakenClientTest {
     @After fun tearDown() { server.shutdown() }
 
     private fun fixture(name: String): String =
-        javaClass.classLoader!!.getResource("fixtures/$name")!!.readText()
+        (javaClass.classLoader?.getResource("fixtures/$name")
+            ?: error("Fixture not found: fixtures/$name")).readText()
 
     @Test fun `parses FreePhase rates and filters to DIRECT_DEBIT`() = runTest {
         server.enqueue(MockResponse().setBody(fixture("freephase_rates_2026-05-15.json")))
@@ -101,5 +103,25 @@ class KrakenClientTest {
         val dd = slots.filter { it.paymentMethod == "DIRECT_DEBIT" }
         assertEquals(1, dd.size)
         assertTrue(dd[0].valueIncVat in 20.0..30.0)
+    }
+
+    @Test fun `throws IOException with status code and body on HTTP error`() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(500)
+                .setBody("""{"detail":"upstream broken"}""")
+        )
+        val ex = try {
+            client.fetchTariffRates(
+                productCode = "EDF_FREEPHASE_DYNAMIC_12M_HH",
+                gspRegion = "C",
+                from = Instant.parse("2026-05-15T00:00:00Z"),
+                to = Instant.parse("2026-05-15T01:00:00Z"),
+            )
+            null
+        } catch (e: java.io.IOException) { e }
+        assertNotNull("expected IOException", ex)
+        assertTrue("error message should contain HTTP status", ex!!.message!!.contains("500"))
+        assertTrue("error message should contain body snippet", ex.message!!.contains("upstream broken"))
     }
 }

@@ -11,7 +11,7 @@ import java.time.Instant
 import java.time.format.DateTimeFormatter
 
 class KrakenClient(
-    private val httpClient: OkHttpClient = OkHttpClient(),
+    private val httpClient: OkHttpClient = defaultClient(),
     private val baseUrl: String = "https://api.edfgb-kraken.energy/v1/",
 ) {
 
@@ -41,8 +41,11 @@ class KrakenClient(
         while (url != null) {
             val req = Request.Builder().url(url!!).get().build()
             val body = httpClient.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) throw IOException("HTTP ${resp.code} from $url")
-                resp.body!!.string()
+                val text = resp.body?.string().orEmpty()
+                if (!resp.isSuccessful) {
+                    throw IOException("HTTP ${resp.code} from $url — ${text.take(200)}")
+                }
+                text
             }
             val page = json.decodeFromString(RatePageDto.serializer(), body)
             collected += page.results
@@ -51,6 +54,12 @@ class KrakenClient(
         collected.filter { it.paymentMethod == "DIRECT_DEBIT" }
     }
 }
+
+private fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
+    .connectTimeout(java.time.Duration.ofSeconds(10))
+    .readTimeout(java.time.Duration.ofSeconds(30))
+    .callTimeout(java.time.Duration.ofSeconds(60))
+    .build()
 
 private fun Instant.toIsoString(): String =
     DateTimeFormatter.ISO_INSTANT.format(this.truncatedTo(java.time.temporal.ChronoUnit.SECONDS))
