@@ -1,6 +1,9 @@
 # Local reference material — not for the repo
 temp/
 
+# Implementation plans are kept local-only (specs are public)
+docs/superpowers/plans/
+
 # macOS
 .DS_Store
 
