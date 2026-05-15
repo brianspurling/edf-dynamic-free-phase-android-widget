@@ -1,0 +1,10 @@
+<resources>
+    <color name="chart_bg">#FFFFFFFF</color>
+    <color name="chart_tariff">#FFE0501E</color>
+    <color name="chart_svt">#FF003B5C</color>
+    <color name="chart_free_band">#FFEEEEEE</color>
+    <color name="chart_axis">#FF6B6B6B</color>
+    <color name="chart_text">#FF333333</color>
+    <color name="chart_now">#FF6B6B6B</color>
+    <color name="chart_stale">#FFB36B00</color>
+</resources>
