@@ -3,11 +3,7 @@ package com.bspurling.freephase.widget
 import android.content.Context
 import android.graphics.Bitmap
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.Image
@@ -19,6 +15,8 @@ import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.provideContent
+import androidx.glance.background
+import androidx.glance.layout.Alignment
 import androidx.glance.layout.Box
 import androidx.glance.layout.fillMaxSize
 import androidx.glance.text.Text
@@ -27,10 +25,9 @@ import androidx.glance.unit.ColorProvider
 import com.bspurling.freephase.R
 import com.bspurling.freephase.chart.ChartCanvas
 import com.bspurling.freephase.chart.ChartTheme
+import com.bspurling.freephase.data.RateData
 import com.bspurling.freephase.data.RateRepository
 import com.bspurling.freephase.ui.MainActivity
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import java.time.Instant
 
 class FreePhaseWidget : GlanceAppWidget() {
@@ -38,50 +35,51 @@ class FreePhaseWidget : GlanceAppWidget() {
     override val sizeMode: SizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        provideContent { Content() }
+        // All suspending I/O happens here, before provideContent runs.
+        val data: RateData? = RateRepository(context).read()
+        val theme: ChartTheme = ChartTheme.from(context)
+        val now: Instant = Instant.now()
+        val density: Float = context.resources.displayMetrics.density
+
+        provideContent { Content(data, theme, now, density) }
     }
 
     @Composable
-    private fun Content() {
+    private fun Content(data: RateData?, theme: ChartTheme, now: Instant, density: Float) {
         val context = LocalContext.current
         val size = LocalSize.current
+        val tapAction = actionStartActivity<MainActivity>()
 
-        var bmp by remember { mutableStateOf<Bitmap?>(null) }
-        var hasData by remember { mutableStateOf(true) }
-
-        LaunchedEffect(size) {
-            val result = withContext(Dispatchers.Default) {
-                val data = RateRepository(context).read()
-                if (data == null || data.isEmpty) {
-                    null
-                } else {
-                    ChartCanvas.render(
-                        data = data,
-                        widthDp = size.width.value.toInt(),
-                        heightDp = size.height.value.toInt(),
-                        theme = ChartTheme.from(context),
-                        now = Instant.now(),
-                        density = context.resources.displayMetrics.density,
-                    )
-                }
-            }
-            // Back on the composition thread — safe to assign state
-            hasData = result != null
-            bmp = result
+        val bitmap: Bitmap? = remember(size, data) {
+            if (data == null || data.isEmpty) null
+            else ChartCanvas.render(
+                data = data,
+                widthDp = size.width.value.toInt(),
+                heightDp = size.height.value.toInt(),
+                theme = theme,
+                now = now,
+                density = density,
+            )
         }
 
-        val tapAction = actionStartActivity<MainActivity>()
-        Box(
-            modifier = GlanceModifier.fillMaxSize().clickable(tapAction),
-        ) {
-            val image = bmp
-            if (image != null) {
-                Image(provider = ImageProvider(image), contentDescription = null,
-                      modifier = GlanceModifier.fillMaxSize())
-            } else if (!hasData) {
+        val rootModifier = GlanceModifier
+            .fillMaxSize()
+            .background(R.color.chart_bg)
+            .clickable(tapAction)
+
+        if (bitmap != null) {
+            Box(modifier = rootModifier) {
+                Image(
+                    provider = ImageProvider(bitmap),
+                    contentDescription = null,
+                    modifier = GlanceModifier.fillMaxSize(),
+                )
+            }
+        } else {
+            Box(modifier = rootModifier, contentAlignment = Alignment.Center) {
                 Text(
                     text = context.getString(R.string.state_loading),
-                    style = TextStyle(color = ColorProvider(android.graphics.Color.GRAY)),
+                    style = TextStyle(color = ColorProvider(R.color.chart_axis)),
                 )
             }
         }
