@@ -70,7 +70,6 @@ class FreePhaseWidget : GlanceAppWidget() {
                 theme = theme,
                 now = now,
                 density = density,
-                diagnostic = true,  // TEMPORARY — to be removed once sizing is understood
             )
         }
 

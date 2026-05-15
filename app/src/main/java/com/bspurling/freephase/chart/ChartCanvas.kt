@@ -35,7 +35,6 @@ object ChartCanvas {
         theme: ChartTheme,
         now: Instant,
         density: Float = 1f,
-        diagnostic: Boolean = false,
     ): Bitmap {
         val w = (widthDp * density).toInt().coerceAtLeast(1)
         val h = (heightDp * density).toInt().coerceAtLeast(1)
@@ -139,18 +138,6 @@ object ChartCanvas {
                 val tp = TextPaint().apply { color = theme.stale; textSize = 11f * density; isAntiAlias = true }
                 c.drawText(label, plot.right - tp.measureText(label), plot.top + 11f * density, tp)
             }
-        }
-
-        // Diagnostic overlay — printed at the bottom-left corner of the bitmap.
-        // Helps reveal what dimensions Glance is reporting via LocalSize.
-        if (diagnostic) {
-            val diag = "${widthDp}x${heightDp}dp d=$density"
-            val dp = TextPaint().apply {
-                color = android.graphics.Color.MAGENTA
-                textSize = 10f * density
-                isAntiAlias = true
-            }
-            c.drawText(diag, 4f * density, h - 4f * density, dp)
         }
 
         return bmp
