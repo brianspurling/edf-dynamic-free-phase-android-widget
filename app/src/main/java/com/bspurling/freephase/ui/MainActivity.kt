@@ -24,6 +24,8 @@ class MainActivity : AppCompatActivity() {
         const val EDF_URL = "https://www.edfenergy.com/tariff-information-labels/freePhase"
     }
 
+    private var webView: WebView? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -35,6 +37,7 @@ class MainActivity : AppCompatActivity() {
 
         val toolbar = Toolbar(this).apply {
             title = getString(R.string.widget_label)
+            setNavigationIcon(android.R.drawable.ic_menu_close_clear_cancel)
             setNavigationOnClickListener { finish() }
         }
         val postcodeChip = TextView(this).apply {
@@ -74,6 +77,7 @@ class MainActivity : AppCompatActivity() {
             }
             loadUrl(EDF_URL)
         }
+        this.webView = webView
 
         root.addView(toolbar, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
@@ -82,5 +86,14 @@ class MainActivity : AppCompatActivity() {
         root.addView(webView, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         setContentView(root)
+    }
+
+    override fun onDestroy() {
+        webView?.let { wv ->
+            (wv.parent as? android.view.ViewGroup)?.removeView(wv)
+            wv.destroy()
+        }
+        webView = null
+        super.onDestroy()
     }
 }
