@@ -95,14 +95,14 @@ object ChartCanvas {
         }
         c.drawPath(path, tariffPaint)
 
-        // now marker — only draw if `now` is inside the data window
-        val nowMillis = now.toEpochMilli()
-        if (nowMillis in xStart..xEnd) {
-            val nowPaint = Paint().apply { color = theme.now; strokeWidth = 1f * density; style = Paint.Style.STROKE }
-            c.drawLine(x(now), plot.top, x(now), plot.bottom, nowPaint)
-        }
-
         if (bucket != Bucket.Small) {
+            // now marker — only draw if `now` is inside the data window
+            val nowMillis = now.toEpochMilli()
+            if (nowMillis in xStart..xEnd) {
+                val nowPaint = Paint().apply { color = theme.now; strokeWidth = 1f * density; style = Paint.Style.STROKE }
+                c.drawLine(x(now), plot.top, x(now), plot.bottom, nowPaint)
+            }
+
             drawAxes(c, plot, slots, xStart, xEnd, yMax, theme, density)
         }
 

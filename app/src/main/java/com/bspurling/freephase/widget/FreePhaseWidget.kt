@@ -50,13 +50,12 @@ class FreePhaseWidget : GlanceAppWidget() {
         var hasData by remember { mutableStateOf(true) }
 
         LaunchedEffect(size) {
-            withContext(Dispatchers.Default) {
+            val result = withContext(Dispatchers.Default) {
                 val data = RateRepository(context).read()
                 if (data == null || data.isEmpty) {
-                    hasData = false
+                    null
                 } else {
-                    hasData = true
-                    bmp = ChartCanvas.render(
+                    ChartCanvas.render(
                         data = data,
                         widthDp = size.width.value.toInt(),
                         heightDp = size.height.value.toInt(),
@@ -66,6 +65,9 @@ class FreePhaseWidget : GlanceAppWidget() {
                     )
                 }
             }
+            // Back on the composition thread — safe to assign state
+            hasData = result != null
+            bmp = result
         }
 
         val tapAction = actionStartActivity<MainActivity>()

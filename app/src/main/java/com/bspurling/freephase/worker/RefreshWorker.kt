@@ -48,7 +48,8 @@ class RefreshWorker(
 
         when (decideRefresh(tariff, now, zone, retryUntilLocalHour = 18)) {
             RefreshOutcome.Retry -> return@runCatching Result.retry()
-            RefreshOutcome.GiveUp, RefreshOutcome.Success -> Unit
+            RefreshOutcome.GiveUp -> return@runCatching Result.success()  // keep existing cache, don't overwrite
+            RefreshOutcome.Success -> Unit
         }
 
         // Deviation from original plan: EDF's SVT endpoint returns the full history of rate
@@ -83,7 +84,7 @@ class RefreshWorker(
         const val PERIODIC_NAME = "freephase-refresh"
         const val ONE_TIME_NAME = "freephase-bootstrap"
 
-        fun schedulePeriodic(context: Context) {
+        fun schedulePeriodic(context: Context, replace: Boolean = false) {
             val now = Instant.now()
             val delay = delayToNextLocalTime(now, LocalTime.of(12, 30), ZoneId.of("Europe/London"))
             val constraints = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
@@ -92,8 +93,9 @@ class RefreshWorker(
                 .setConstraints(constraints)
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.MINUTES)
                 .build()
+            val policy = if (replace) ExistingPeriodicWorkPolicy.UPDATE else ExistingPeriodicWorkPolicy.KEEP
             WorkManager.getInstance(context)
-                .enqueueUniquePeriodicWork(PERIODIC_NAME, ExistingPeriodicWorkPolicy.UPDATE, req)
+                .enqueueUniquePeriodicWork(PERIODIC_NAME, policy, req)
         }
 
         fun enqueueBootstrap(context: Context) {
