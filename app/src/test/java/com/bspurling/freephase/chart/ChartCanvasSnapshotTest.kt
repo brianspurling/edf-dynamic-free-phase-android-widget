@@ -39,7 +39,7 @@ class ChartCanvasSnapshotTest {
         if (resource == null) {
             // First run: write the fixture into the working tree so the engineer can commit it.
             val out = File("src/test/resources/fixtures/$name")
-            out.parentFile.mkdirs()
+            out.parentFile?.mkdirs()
             out.writeBytes(actualBytes)
             error("Fixture $name not found; wrote it to ${out.absolutePath} — review visually and commit.")
         }
