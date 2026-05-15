@@ -13,8 +13,6 @@ import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import kotlin.math.ceil
-import kotlin.math.max
 
 object ChartCanvas {
 
@@ -48,21 +46,29 @@ object ChartCanvas {
         if (slots.isEmpty()) return bmp
 
         val bucket = bucketOf(widthDp, heightDp)
-        val pad = if (bucket == Bucket.Small) 4f * density else 12f * density
-        val plot = RectF(pad, pad, w - pad, h - pad)
+        // Tight padding — plot should fill almost the full widget height.
+        val padTop = if (bucket == Bucket.Small) 2f * density else 4f * density
+        val padX = if (bucket == Bucket.Small) 4f * density else 8f * density
+        val padBottom = if (bucket == Bucket.Small) 2f * density else 4f * density
+        val plot = RectF(padX, padTop, w - padX, h - padBottom)
         if (bucket != Bucket.Small) {
-            plot.bottom -= 18f * density  // room for hour labels
-            plot.left += 32f * density    // room for y-axis labels
+            plot.bottom -= 16f * density  // room for hour labels under the plot
+            plot.left += 32f * density    // room for y-axis labels left of the plot
         }
 
         val xStart = slots.first().validFrom.toEpochMilli()
         val xEnd = slots.last().validTo.toEpochMilli()
-        val yMax = max(5.0, ceil(slots.maxOf { it.pence } / 5.0) * 5.0)
+        // Fixed y-axis: -5p..40p. Keeps the chart shape comparable day-to-day
+        // and leaves visible space below 0p so free-phase slots aren't squashed
+        // against the x-axis.
+        val yMin = -5.0
+        val yMax = 40.0
+        val yRange = yMax - yMin
 
         fun x(t: Instant): Float =
             plot.left + (t.toEpochMilli() - xStart).toFloat() / (xEnd - xStart) * plot.width()
         fun y(p: Double): Float =
-            plot.bottom - (p / yMax).toFloat() * plot.height()
+            plot.bottom - ((p - yMin) / yRange).toFloat() * plot.height()
 
         // free-phase bands
         val bandPaint = Paint().apply { color = theme.freeBand; style = Paint.Style.FILL }
@@ -71,7 +77,7 @@ object ChartCanvas {
         }
 
         // SVT line (large bucket only)
-        if (bucket == Bucket.Large && data.svtPence != null && data.svtPence <= yMax) {
+        if (bucket == Bucket.Large && data.svtPence != null && data.svtPence in yMin..yMax) {
             val svtPaint = Paint().apply {
                 color = theme.svt
                 strokeWidth = 2f * density
@@ -104,7 +110,7 @@ object ChartCanvas {
                 c.drawLine(x(now), plot.top, x(now), plot.bottom, nowPaint)
             }
 
-            drawAxes(c, plot, slots, xStart, xEnd, yMax, theme, density)
+            drawAxes(c, plot, slots, xStart, xEnd, yMin, yRange, theme, density)
         }
 
         // last-updated timestamp (top right)
@@ -120,15 +126,16 @@ object ChartCanvas {
     }
 
     private fun drawAxes(
-        c: Canvas, plot: RectF, slots: List<Slot>, xStart: Long, xEnd: Long, yMax: Double,
+        c: Canvas, plot: RectF, slots: List<Slot>, xStart: Long, xEnd: Long,
+        yMin: Double, yRange: Double,
         theme: ChartTheme, density: Float,
     ) {
         val axis = Paint().apply { color = theme.axis; strokeWidth = 1.5f * density; isAntiAlias = true }
         val text = TextPaint().apply { color = theme.text; textSize = 13f * density; isAntiAlias = true }
 
-        // y-axis labels (3 ticks)
-        listOf(0.0, yMax / 2.0, yMax).forEach { v ->
-            val yp = plot.bottom - (v / yMax).toFloat() * plot.height()
+        // y-axis labels at fixed positions matching the fixed yMin..yMax range
+        listOf(0.0, 20.0, 40.0).forEach { v ->
+            val yp = plot.bottom - ((v - yMin) / yRange).toFloat() * plot.height()
             c.drawText("${v.toInt()}p", plot.left - 28f * density, yp + 4f * density, text)
         }
 
