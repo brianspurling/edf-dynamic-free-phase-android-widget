@@ -16,12 +16,24 @@
 
     setNativeValue(input, POSTCODE);
 
-    // wait one tick so React picks up the controlled-value update
-    setTimeout(function clickSubmit() {
+    // Wait one tick so React picks up the controlled-value update before we submit.
+    setTimeout(function submit() {
+      // Prefer form.requestSubmit() — fires a real submit event so React's onSubmit handler runs.
+      const form = input.closest('form') || document.querySelector('form');
+      if (form && typeof form.requestSubmit === 'function') {
+        form.requestSubmit();
+        return;
+      }
+      // Fallback: click the submit button if the form isn't requestSubmit-able for some reason.
       const buttons = Array.from(document.querySelectorAll('button[type="submit"]'));
-      const target = buttons.find(b => /view\s+unit\s+prices/i.test(b.textContent || ""));
-      if (target) { target.click(); return; }
-      if (Date.now() < deadline) setTimeout(clickSubmit, 150);
+      const target =
+        buttons.find(b => /view\s+unit\s+prices/i.test((b.textContent || '').trim())) ||
+        buttons[0];
+      if (target) {
+        target.click();
+        return;
+      }
+      if (Date.now() < deadline) setTimeout(submit, 150);
     }, 80);
   }
 

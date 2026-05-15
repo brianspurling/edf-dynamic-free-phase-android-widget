@@ -48,7 +48,16 @@ class RefreshWorker(
 
         when (decideRefresh(tariff, now, zone, retryUntilLocalHour = 18)) {
             RefreshOutcome.Retry -> return@runCatching Result.retry()
-            RefreshOutcome.GiveUp -> return@runCatching Result.success()  // keep existing cache, don't overwrite
+            RefreshOutcome.GiveUp -> {
+                // Tomorrow's slots aren't published and we're past the cutoff. If we already
+                // have a (richer) cache, leave it alone. If the cache is empty (first install
+                // late in the day), fall through and persist today's slots so the widget can
+                // show something instead of "Fetching prices…" forever.
+                val existing = repo.read()
+                if (existing != null && !existing.isEmpty) {
+                    return@runCatching Result.success()
+                }
+            }
             RefreshOutcome.Success -> Unit
         }
 
