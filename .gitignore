@@ -1,0 +1,9 @@
+# Local reference material — not for the repo
+temp/
+
+# macOS
+.DS_Store
+
+# Local-only secrets / per-machine config
+# (Gradle will read postcode etc. from here once the Android project is scaffolded)
+local.properties
