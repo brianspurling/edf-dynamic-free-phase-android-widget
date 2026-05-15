@@ -47,12 +47,12 @@ object ChartCanvas {
 
         val bucket = bucketOf(widthDp, heightDp)
         // Tight padding — plot should fill almost the full widget height.
-        val padTop = if (bucket == Bucket.Small) 2f * density else 4f * density
+        val padTop = if (bucket == Bucket.Small) 1f * density else 2f * density
         val padX = if (bucket == Bucket.Small) 4f * density else 8f * density
-        val padBottom = if (bucket == Bucket.Small) 2f * density else 4f * density
+        val padBottom = if (bucket == Bucket.Small) 1f * density else 2f * density
         val plot = RectF(padX, padTop, w - padX, h - padBottom)
         if (bucket != Bucket.Small) {
-            plot.bottom -= 16f * density  // room for hour labels under the plot
+            plot.bottom -= 13f * density  // room for hour labels under the plot
             plot.left += 32f * density    // room for y-axis labels left of the plot
         }
 
@@ -102,6 +102,21 @@ object ChartCanvas {
         }
         c.drawPath(path, tariffPaint)
 
+        // "now" indicator — filled orange dot on the tariff line at the current price
+        val nowMillis = now.toEpochMilli()
+        val currentSlot = slots.firstOrNull { s ->
+            val fromMillis = s.validFrom.toEpochMilli()
+            val toMillis = s.validTo.toEpochMilli()
+            nowMillis in fromMillis until toMillis
+        } ?: slots.first()
+        val nowDotPaint = Paint().apply {
+            color = theme.tariff
+            style = Paint.Style.FILL
+            isAntiAlias = true
+        }
+        val nowDotRadius = if (bucket == Bucket.Small) 3f * density else 4f * density
+        c.drawCircle(x(now), y(currentSlot.pence), nowDotRadius, nowDotPaint)
+
         if (bucket != Bucket.Small) {
             // now marker — only draw if `now` is inside the data window
             val nowMillis = now.toEpochMilli()
@@ -113,13 +128,16 @@ object ChartCanvas {
             drawAxes(c, plot, slots, xStart, xEnd, yMin, yRange, theme, density)
         }
 
-        // last-updated timestamp (top right)
+        // last-updated badge — only shown when the cache is stale (>26h old)
         if (bucket != Bucket.Small) {
             val isStale = Duration.between(data.fetchedAt, now) > Duration.ofHours(26)
-            val label = if (isStale) "⚠ stale ${timeFmt.format(data.fetchedAt)}:${"%02d".format(data.fetchedAt.atZone(zone).minute)}"
-                        else "${data.fetchedAt.atZone(zone).hour}:${"%02d".format(data.fetchedAt.atZone(zone).minute)}"
-            val tp = TextPaint().apply { color = if (isStale) theme.stale else theme.text; textSize = 11f * density; isAntiAlias = true }
-            c.drawText(label, plot.right - tp.measureText(label), plot.top + 11f * density, tp)
+            if (isStale) {
+                val fetchedHour = data.fetchedAt.atZone(zone).hour
+                val fetchedMin = data.fetchedAt.atZone(zone).minute
+                val label = "⚠ stale ${"%02d".format(fetchedHour)}:${"%02d".format(fetchedMin)}"
+                val tp = TextPaint().apply { color = theme.stale; textSize = 11f * density; isAntiAlias = true }
+                c.drawText(label, plot.right - tp.measureText(label), plot.top + 11f * density, tp)
+            }
         }
 
         return bmp
@@ -131,7 +149,7 @@ object ChartCanvas {
         theme: ChartTheme, density: Float,
     ) {
         val axis = Paint().apply { color = theme.axis; strokeWidth = 1.5f * density; isAntiAlias = true }
-        val text = TextPaint().apply { color = theme.text; textSize = 13f * density; isAntiAlias = true }
+        val text = TextPaint().apply { color = theme.text; textSize = 11f * density; isAntiAlias = true }
 
         // y-axis labels at fixed positions matching the fixed yMin..yMax range
         listOf(0.0, 20.0, 40.0).forEach { v ->
@@ -145,8 +163,8 @@ object ChartCanvas {
             if (t.hour % 6 == 0) {
                 val xp = plot.left + (t.toInstant().toEpochMilli() - xStart).toFloat() / (xEnd - xStart) * plot.width()
                 if (xp in plot.left..plot.right) {
-                    c.drawLine(xp, plot.bottom, xp, plot.bottom + 4f * density, axis)
-                    c.drawText("%02d".format(t.hour), xp - 8f * density, plot.bottom + 14f * density, text)
+                    c.drawLine(xp, plot.bottom, xp, plot.bottom + 3f * density, axis)
+                    c.drawText("%02d".format(t.hour), xp - 7f * density, plot.bottom + 11f * density, text)
                 }
             }
             t = t.plusHours(1)
@@ -159,7 +177,7 @@ object ChartCanvas {
             val xp = plot.left + (b.validFrom.toEpochMilli() - xStart).toFloat() / (xEnd - xStart) * plot.width()
             val label = dateFmt.format(b.validFrom)
             val bold = TextPaint(text).apply { isFakeBoldText = true }
-            c.drawText(label, xp + 3f * density, plot.top + 14f * density, bold)
+            c.drawText(label, xp + 3f * density, plot.top + 12f * density, bold)
         }
     }
 }
