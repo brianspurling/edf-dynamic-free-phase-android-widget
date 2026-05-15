@@ -15,7 +15,7 @@ import java.time.Duration
 import java.time.Instant
 
 @RunWith(RobolectricTestRunner::class)
-@Config(qualifiers = "w480dp-h960dp")
+@Config(qualifiers = "w480dp-h960dp", application = android.app.Application::class)
 class ChartCanvasSnapshotTest {
 
     private val context = ApplicationProvider.getApplicationContext<android.content.Context>()
