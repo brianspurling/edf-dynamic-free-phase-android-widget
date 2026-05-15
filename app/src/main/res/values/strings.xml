@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">FreePhase</string>
+    <string name="widget_label">FreePhase prices</string>
+    <string name="widget_description">EDF FreePhase Dynamic tariff price chart for today and tomorrow.</string>
+    <string name="open_in_chrome">Open in Chrome</string>
+    <string name="postcode_chip">SW19 6AY</string>
+    <string name="postcode_copied">Postcode copied</string>
+    <string name="state_loading">Fetching prices…</string>
+    <string name="state_stale">⚠ stale</string>
+</resources>

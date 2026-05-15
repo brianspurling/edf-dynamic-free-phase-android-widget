@@ -10,3 +10,8 @@ docs/superpowers/plans/
 # Local-only secrets / per-machine config
 # (Gradle will read postcode etc. from here once the Android project is scaffolded)
 local.properties
+
+# Gradle build outputs and caches
+.gradle/
+app/build/
+build/
