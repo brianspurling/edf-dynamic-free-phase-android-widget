@@ -18,6 +18,7 @@ import androidx.glance.appwidget.provideContent
 import androidx.glance.background
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Box
+import androidx.glance.layout.ContentScale
 import androidx.glance.layout.fillMaxSize
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
@@ -59,6 +60,7 @@ class FreePhaseWidget : GlanceAppWidget() {
                 theme = theme,
                 now = now,
                 density = density,
+                diagnostic = true,  // TEMPORARY — to be removed once sizing is understood
             )
         }
 
@@ -73,6 +75,7 @@ class FreePhaseWidget : GlanceAppWidget() {
                     provider = ImageProvider(bitmap),
                     contentDescription = null,
                     modifier = GlanceModifier.fillMaxSize(),
+                    contentScale = ContentScale.FillBounds,
                 )
             }
         } else {
