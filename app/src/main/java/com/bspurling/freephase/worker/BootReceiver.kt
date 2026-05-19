@@ -9,6 +9,7 @@ class BootReceiver : BroadcastReceiver() {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
             RefreshWorker.enqueueBootstrap(context)
             RefreshWorker.schedulePeriodic(context, replace = true)
+            RedrawScheduler.scheduleNext(context)
         }
     }
 }

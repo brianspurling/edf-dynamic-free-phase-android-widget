@@ -43,5 +43,10 @@
             </intent-filter>
         </receiver>
 
+        <receiver
+            android:name=".worker.RedrawReceiver"
+            android:exported="false"
+            android:enabled="true" />
+
     </application>
 </manifest>

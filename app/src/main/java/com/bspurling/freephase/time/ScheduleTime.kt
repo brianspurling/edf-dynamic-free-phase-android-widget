@@ -23,3 +23,10 @@ fun delayToNextLocalTime(now: Instant, target: LocalTime, zone: ZoneId): Duratio
 /** Local midnight at the end of "tomorrow" (i.e. start of day-after-tomorrow), as a UTC Instant. */
 fun endOfTomorrowLocal(now: Instant, zone: ZoneId): Instant =
     now.atZone(zone).toLocalDate().plusDays(2).atStartOfDay(zone).toInstant()
+
+/** Next half-hour boundary (HH:00 or HH:30) strictly after [now]. */
+fun nextHalfHour(now: Instant): Instant {
+    val halfHourMs = 30L * 60L * 1000L
+    val nowMs = now.toEpochMilli()
+    return Instant.ofEpochMilli((nowMs / halfHourMs + 1) * halfHourMs)
+}

@@ -107,13 +107,15 @@ class RefreshWorker(
                 .enqueueUniquePeriodicWork(PERIODIC_NAME, policy, req)
         }
 
-        fun enqueueBootstrap(context: Context) {
+        fun enqueueBootstrap(context: Context, force: Boolean = false) {
             val req = OneTimeWorkRequestBuilder<RefreshWorker>()
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
                 .build()
+            val policy = if (force) androidx.work.ExistingWorkPolicy.REPLACE
+                         else androidx.work.ExistingWorkPolicy.KEEP
             WorkManager.getInstance(context)
-                .enqueueUniqueWork(ONE_TIME_NAME, androidx.work.ExistingWorkPolicy.KEEP, req)
+                .enqueueUniqueWork(ONE_TIME_NAME, policy, req)
         }
     }
 }

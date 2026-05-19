@@ -31,6 +31,7 @@ import com.bspurling.freephase.chart.ChartTheme
 import com.bspurling.freephase.data.RateData
 import com.bspurling.freephase.data.RateRepository
 import com.bspurling.freephase.ui.MainActivity
+import com.bspurling.freephase.worker.RefreshWorker
 import java.time.Instant
 
 class FreePhaseWidget : GlanceAppWidget() {
@@ -47,12 +48,23 @@ class FreePhaseWidget : GlanceAppWidget() {
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         // All suspending I/O happens here, before provideContent runs.
-        val data: RateData? = RateRepository(context).read()
+        val cached: RateData? = RateRepository(context).read()
         val theme: ChartTheme = ChartTheme.from(context)
         val now: Instant = Instant.now()
         val density: Float = context.resources.displayMetrics.density
 
-        provideContent { Content(data, theme, now, density) }
+        // If the cache has no slot still covering `now` (either empty, or every slot is in
+        // the past because the daily worker has been deferred for a day+), kick off a fresh
+        // fetch and render the placeholder. Without this the chart would silently render an
+        // empty bitmap and the widget would look blank with no hint that anything's wrong.
+        val effective = if (cached != null && cached.slotsFrom(now).isNotEmpty()) {
+            cached
+        } else {
+            RefreshWorker.enqueueBootstrap(context, force = true)
+            null
+        }
+
+        provideContent { Content(effective, theme, now, density) }
     }
 
     @Composable

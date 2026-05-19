@@ -53,4 +53,19 @@ class ScheduleTimeTest {
         val end = endOfTomorrowLocal(now, london)
         assertEquals(london("2026-05-17", "00:00"), end)
     }
+
+    @Test fun `nextHalfHour from xx-15 is xx-30`() {
+        val now = Instant.parse("2026-05-15T10:15:00Z")
+        assertEquals(Instant.parse("2026-05-15T10:30:00Z"), nextHalfHour(now))
+    }
+
+    @Test fun `nextHalfHour from xx-45 is next hour exact`() {
+        val now = Instant.parse("2026-05-15T10:45:00Z")
+        assertEquals(Instant.parse("2026-05-15T11:00:00Z"), nextHalfHour(now))
+    }
+
+    @Test fun `nextHalfHour from exact boundary advances to next slot`() {
+        val now = Instant.parse("2026-05-15T10:30:00Z")
+        assertEquals(Instant.parse("2026-05-15T11:00:00Z"), nextHalfHour(now))
+    }
 }
