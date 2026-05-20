@@ -20,6 +20,7 @@ import androidx.glance.appwidget.provideContent
 import androidx.glance.background
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Box
+import androidx.glance.layout.Column
 import androidx.glance.layout.ContentScale
 import androidx.glance.layout.fillMaxSize
 import androidx.glance.text.Text
@@ -33,6 +34,8 @@ import com.bspurling.freephase.data.RateRepository
 import com.bspurling.freephase.ui.MainActivity
 import com.bspurling.freephase.worker.RefreshWorker
 import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 class FreePhaseWidget : GlanceAppWidget() {
 
@@ -64,11 +67,17 @@ class FreePhaseWidget : GlanceAppWidget() {
             null
         }
 
-        provideContent { Content(effective, theme, now, density) }
+        provideContent { Content(effective, cached?.fetchedAt, theme, now, density) }
     }
 
     @Composable
-    private fun Content(data: RateData?, theme: ChartTheme, now: Instant, density: Float) {
+    private fun Content(
+        data: RateData?,
+        cachedFetchedAt: Instant?,
+        theme: ChartTheme,
+        now: Instant,
+        density: Float,
+    ) {
         val context = LocalContext.current
         val size = LocalSize.current
         val tapAction = actionStartActivity<MainActivity>()
@@ -101,11 +110,24 @@ class FreePhaseWidget : GlanceAppWidget() {
             }
         } else {
             Box(modifier = rootModifier, contentAlignment = Alignment.Center) {
-                Text(
-                    text = context.getString(R.string.state_loading),
-                    style = TextStyle(color = ColorProvider(R.color.chart_axis)),
-                )
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = context.getString(R.string.state_loading),
+                        style = TextStyle(color = ColorProvider(R.color.chart_axis)),
+                    )
+                    if (cachedFetchedAt != null) {
+                        Text(
+                            text = "last cached: ${placeholderFmt.format(cachedFetchedAt)}",
+                            style = TextStyle(color = ColorProvider(R.color.chart_axis)),
+                        )
+                    }
+                }
             }
         }
+    }
+
+    companion object {
+        private val placeholderFmt: DateTimeFormatter =
+            DateTimeFormatter.ofPattern("d MMM HH:mm").withZone(ZoneId.of("Europe/London"))
     }
 }

@@ -49,13 +49,22 @@ class RefreshWorker(
         when (decideRefresh(tariff, now, zone, retryUntilLocalHour = 18)) {
             RefreshOutcome.Retry -> return@runCatching Result.retry()
             RefreshOutcome.GiveUp -> {
-                // Tomorrow's slots aren't published and we're past the cutoff. If we already
-                // have a (richer) cache, leave it alone. If the cache is empty (first install
-                // late in the day), fall through and persist today's slots so the widget can
-                // show something instead of "Fetching prices…" forever.
+                // Tomorrow's slots aren't published and we're past the cutoff. Three cases:
+                //  - Existing cache still covers "now" → keep it (the new today-only data
+                //    is no richer, and downgrading would lose tomorrow's slots if they
+                //    were ever there).
+                //  - Existing cache is dead (every slot is in the past) AND we got fresh
+                //    slots → fall through and persist them: today-only is better than a
+                //    blank widget stuck on "Fetching prices…".
+                //  - Existing cache is dead AND we got nothing back → retry. Writing an
+                //    empty cache would just trigger another fetch on the next redraw.
                 val existing = repo.read()
-                if (existing != null && !existing.isEmpty) {
+                if (existing != null && existing.slotsFrom(now).isNotEmpty()) {
+                    FreePhaseWidget().updateAll(applicationContext)
                     return@runCatching Result.success()
+                }
+                if (tariff.isEmpty()) {
+                    return@runCatching Result.retry()
                 }
             }
             RefreshOutcome.Success -> Unit
