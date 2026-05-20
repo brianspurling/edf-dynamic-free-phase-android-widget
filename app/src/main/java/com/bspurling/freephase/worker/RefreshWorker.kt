@@ -34,8 +34,25 @@ class RefreshWorker(
     private val client = KrakenClient()
     private val repo = RateRepository(appContext)
 
-    override suspend fun doWork(): Result = runCatching {
+    override suspend fun doWork(): Result {
         val now = Instant.now()
+        // Record entry so we can see "worker started but never finished" cases.
+        repo.recordAttempt(now, "Running", null)
+        return try {
+            val (result, outcome, detail) = doWorkInner(now)
+            repo.recordAttempt(now, outcome, detail)
+            // Make sure the widget redraws so the user sees the updated diagnostic line
+            // (and the chart, if we just wrote fresh data).
+            FreePhaseWidget().updateAll(applicationContext)
+            result
+        } catch (t: Throwable) {
+            repo.recordAttempt(now, "Exception", "${t.javaClass.simpleName}: ${t.message}")
+            runCatching { FreePhaseWidget().updateAll(applicationContext) }
+            Result.retry()
+        }
+    }
+
+    private suspend fun doWorkInner(now: Instant): Triple<Result, String, String?> {
         val from = now.atZone(zone).toLocalDate().atStartOfDay(zone).toInstant()
         val to = endOfTomorrowLocal(now, zone)
 
@@ -47,34 +64,21 @@ class RefreshWorker(
         ).toSlots()
 
         when (decideRefresh(tariff, now, zone, retryUntilLocalHour = 18)) {
-            RefreshOutcome.Retry -> return@runCatching Result.retry()
+            RefreshOutcome.Retry ->
+                return Triple(Result.retry(), "Retry", "got ${tariff.size} slots, tomorrow not yet")
             RefreshOutcome.GiveUp -> {
-                // Tomorrow's slots aren't published and we're past the cutoff. Three cases:
-                //  - Existing cache still covers "now" → keep it (the new today-only data
-                //    is no richer, and downgrading would lose tomorrow's slots if they
-                //    were ever there).
-                //  - Existing cache is dead (every slot is in the past) AND we got fresh
-                //    slots → fall through and persist them: today-only is better than a
-                //    blank widget stuck on "Fetching prices…".
-                //  - Existing cache is dead AND we got nothing back → retry. Writing an
-                //    empty cache would just trigger another fetch on the next redraw.
                 val existing = repo.read()
                 if (existing != null && existing.slotsFrom(now).isNotEmpty()) {
-                    FreePhaseWidget().updateAll(applicationContext)
-                    return@runCatching Result.success()
+                    return Triple(Result.success(), "GiveUp:kept", "fetched ${tariff.size}, kept cache")
                 }
                 if (tariff.isEmpty()) {
-                    return@runCatching Result.retry()
+                    return Triple(Result.retry(), "Retry", "past 18:00 but got 0 slots")
                 }
+                // Fall through: dead cache + non-empty fetched data → write what we have.
             }
             RefreshOutcome.Success -> Unit
         }
 
-        // Deviation from original plan: EDF's SVT endpoint returns the full history of rate
-        // bands, not just the current rate. Using toSlots().firstOrNull() would return the
-        // OLDEST historical rate (sorted by validFrom ascending) — the wrong one. Instead we
-        // operate on the DTOs directly and pick the currently-active open-ended band
-        // (validTo == null), falling back to the latest by validFrom if all bands are closed.
         val cachedSvt = repo.read()?.svtPence
         val svt = if (repo.svtCacheStale()) {
             val svtDtos = client.fetchTariffRates(
@@ -84,17 +88,16 @@ class RefreshWorker(
                 to = to,
             )
             // SVT endpoint returns historical bands; pick the currently-active one
-            // (validTo == null, i.e. open-ended) and prefer DIRECT_DEBIT which the
-            // KrakenClient already filtered to.
+            // (validTo == null, i.e. open-ended), falling back to the latest by validFrom
+            // if all bands are closed.
             val active = svtDtos.firstOrNull { it.validTo == null }
-                ?: svtDtos.maxByOrNull { it.validFrom }   // fallback: latest by validFrom
+                ?: svtDtos.maxByOrNull { it.validFrom }
             active?.valueIncVat ?: cachedSvt
         } else cachedSvt
 
         repo.write(RateData(tariffSlots = tariff, svtPence = svt, fetchedAt = now))
-        FreePhaseWidget().updateAll(applicationContext)
-        Result.success()
-    }.getOrElse { Result.retry() }
+        return Triple(Result.success(), "Wrote", "${tariff.size} slots, svt=${svt}")
+    }
 
     companion object {
         private const val FREEPHASE_PRODUCT = "EDF_FREEPHASE_DYNAMIC_12M_HH"

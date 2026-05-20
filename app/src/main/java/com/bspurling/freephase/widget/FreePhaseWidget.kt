@@ -31,6 +31,7 @@ import com.bspurling.freephase.chart.ChartCanvas
 import com.bspurling.freephase.chart.ChartTheme
 import com.bspurling.freephase.data.RateData
 import com.bspurling.freephase.data.RateRepository
+import com.bspurling.freephase.data.WorkerDiagnostic
 import com.bspurling.freephase.ui.MainActivity
 import com.bspurling.freephase.worker.RefreshWorker
 import java.time.Instant
@@ -51,7 +52,9 @@ class FreePhaseWidget : GlanceAppWidget() {
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         // All suspending I/O happens here, before provideContent runs.
-        val cached: RateData? = RateRepository(context).read()
+        val repo = RateRepository(context)
+        val cached: RateData? = repo.read()
+        val diagnostic: WorkerDiagnostic? = repo.readDiagnostic()
         val theme: ChartTheme = ChartTheme.from(context)
         val now: Instant = Instant.now()
         val density: Float = context.resources.displayMetrics.density
@@ -67,13 +70,14 @@ class FreePhaseWidget : GlanceAppWidget() {
             null
         }
 
-        provideContent { Content(effective, cached?.fetchedAt, theme, now, density) }
+        provideContent { Content(effective, cached?.fetchedAt, diagnostic, theme, now, density) }
     }
 
     @Composable
     private fun Content(
         data: RateData?,
         cachedFetchedAt: Instant?,
+        diagnostic: WorkerDiagnostic?,
         theme: ChartTheme,
         now: Instant,
         density: Float,
@@ -120,6 +124,18 @@ class FreePhaseWidget : GlanceAppWidget() {
                             text = "last cached: ${placeholderFmt.format(cachedFetchedAt)}",
                             style = TextStyle(color = ColorProvider(R.color.chart_axis)),
                         )
+                    }
+                    if (diagnostic != null) {
+                        Text(
+                            text = "last try: ${placeholderFmt.format(diagnostic.attemptedAt)} — ${diagnostic.outcome}",
+                            style = TextStyle(color = ColorProvider(R.color.chart_axis)),
+                        )
+                        if (diagnostic.detail != null) {
+                            Text(
+                                text = diagnostic.detail,
+                                style = TextStyle(color = ColorProvider(R.color.chart_axis)),
+                            )
+                        }
                     }
                 }
             }
