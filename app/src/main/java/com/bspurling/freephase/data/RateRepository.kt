@@ -50,7 +50,7 @@ class RateRepository(private val context: Context) {
         context.dataStore.edit { prefs ->
             prefs[diagAtKey] = at.toString()
             prefs[diagOutcomeKey] = outcome
-            if (detail != null) prefs[diagDetailKey] = detail.take(140)
+            if (detail != null) prefs[diagDetailKey] = detail.take(220)
             else prefs.remove(diagDetailKey)
         }
     }

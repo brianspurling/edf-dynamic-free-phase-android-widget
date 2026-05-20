@@ -37,8 +37,11 @@ class RefreshWorker(
 
     override suspend fun doWork(): Result {
         val now = Instant.now()
-        // Record entry so we can see "worker started but never finished" cases.
-        repo.recordAttempt(now, "Running", null)
+        // Note: we deliberately don't record "Running" at entry. Doing so would clobber
+        // the previous attempt's diagnostic the moment a retry kicks off, leaving the
+        // user no time to read failure details on the widget. The diagnostic only
+        // updates when an attempt completes, so a previous Exception stays visible
+        // until the next attempt produces a new outcome.
         return try {
             val (result, outcome, detail) = doWorkInner(now)
             repo.recordAttempt(now, outcome, detail)
