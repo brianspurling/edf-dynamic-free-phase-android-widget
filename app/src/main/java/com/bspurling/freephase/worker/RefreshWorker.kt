@@ -18,6 +18,7 @@ import com.bspurling.freephase.data.RateRepository
 import com.bspurling.freephase.data.toSlots
 import com.bspurling.freephase.time.delayToNextLocalTime
 import com.bspurling.freephase.time.endOfTomorrowLocal
+import com.bspurling.freephase.time.nextHalfHour
 import com.bspurling.freephase.widget.FreePhaseWidget
 import java.time.Duration
 import java.time.Instant
@@ -64,8 +65,15 @@ class RefreshWorker(
         ).toSlots()
 
         when (decideRefresh(tariff, now, zone, retryUntilLocalHour = 18)) {
-            RefreshOutcome.Retry ->
-                return Triple(Result.retry(), "Retry", "got ${tariff.size} slots, tomorrow not yet")
+            RefreshOutcome.Retry -> {
+                // Don't use WorkManager's exponential backoff — it caps at 1h and can
+                // easily skate past EDF's ~12:30 publication window for tomorrow's
+                // rates, leaving us stuck for the rest of the day. Instead schedule an
+                // explicit one-shot retry at 12:30 BST (or, if we're already past
+                // 12:30, at the next half-hour boundary).
+                scheduleRetryAroundPublication(applicationContext, now, zone)
+                return Triple(Result.success(), "Retry", "got ${tariff.size}, retry scheduled")
+            }
             RefreshOutcome.GiveUp -> {
                 val existing = repo.read()
                 if (existing != null && existing.slotsFrom(now).isNotEmpty()) {
@@ -104,6 +112,29 @@ class RefreshWorker(
         private const val SVT_PRODUCT = "EDF_STANDARD_VARIABLE"
         const val PERIODIC_NAME = "freephase-refresh"
         const val ONE_TIME_NAME = "freephase-bootstrap"
+        const val RETRY_NAME = "freephase-retry-around-publication"
+
+        /** Schedules a fresh fetch attempt timed against EDF's ~12:30 BST publication
+         *  window. Before 12:30 today → target = today 12:30. After 12:30 → target =
+         *  the next half-hour boundary. REPLACE policy so we always reset to the
+         *  latest target, even if a previous retry is still pending. */
+        private fun scheduleRetryAroundPublication(
+            context: Context,
+            now: Instant,
+            zone: ZoneId,
+        ) {
+            val nowZ = now.atZone(zone)
+            val today1230 = nowZ.toLocalDate().atTime(12, 30).atZone(zone)
+            val targetInstant =
+                if (nowZ.isBefore(today1230)) today1230.toInstant() else nextHalfHour(now)
+            val delay = Duration.between(now, targetInstant).coerceAtLeast(Duration.ofMinutes(1))
+            val req = OneTimeWorkRequestBuilder<RefreshWorker>()
+                .setInitialDelay(delay.toMinutes(), TimeUnit.MINUTES)
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                .build()
+            WorkManager.getInstance(context)
+                .enqueueUniqueWork(RETRY_NAME, androidx.work.ExistingWorkPolicy.REPLACE, req)
+        }
 
         fun schedulePeriodic(context: Context, replace: Boolean = false) {
             val now = Instant.now()
