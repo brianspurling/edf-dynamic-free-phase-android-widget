@@ -51,10 +51,12 @@ object ChartCanvas {
         if (slots.isEmpty()) return bmp
 
         val bucket = bucketOf(widthDp, heightDp)
-        // Tight padding — plot should fill almost the full widget height.
-        val padTop = if (bucket == Bucket.Small) 1f * density else 2f * density
+        // Padding: small bucket stays tighter (no axes); medium/large need
+        // room above for the y-axis top label (40p) and day-boundary labels,
+        // and a small breathing strip below the hour-tick labels.
+        val padTop = if (bucket == Bucket.Small) 4f * density else 12f * density
         val padX = if (bucket == Bucket.Small) 4f * density else 8f * density
-        val padBottom = if (bucket == Bucket.Small) 1f * density else 2f * density
+        val padBottom = if (bucket == Bucket.Small) 4f * density else 6f * density
         val plot = RectF(padX, padTop, w - padX, h - padBottom)
         if (bucket != Bucket.Small) {
             plot.bottom -= 13f * density  // room for hour labels under the plot
