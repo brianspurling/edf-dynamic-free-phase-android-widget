@@ -43,7 +43,11 @@ object ChartCanvas {
         c.drawColor(theme.background)
 
         val (windowStart, windowEnd) = ChartWindow.fixedWindow(now, zone)
-        val slots = data.slotsFrom(now).filter { it.validFrom < windowEnd }
+        // Show any slot that intersects the window — including today's already-elapsed
+        // rates the worker fetches from 00:00 local. Past slots before the window
+        // (e.g. yesterday before 23:00 local) are not fetched, so the left edge of the
+        // window may still be empty.
+        val slots = data.tariffSlots.filter { it.validTo > windowStart && it.validFrom < windowEnd }
         if (slots.isEmpty()) return bmp
 
         val bucket = bucketOf(widthDp, heightDp)
