@@ -8,9 +8,9 @@ import android.graphics.Path
 import android.graphics.RectF
 import android.text.TextPaint
 import com.bspurling.freephase.data.RateData
-import com.bspurling.freephase.data.Slot
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -42,22 +42,30 @@ object ChartCanvas {
         val c = Canvas(bmp)
         c.drawColor(theme.background)
 
-        val slots = data.slotsFrom(now)
+        val (windowStart, windowEnd) = ChartWindow.fixedWindow(now, zone)
+        // Show any slot that intersects the window — including today's already-elapsed
+        // rates the worker fetches from 00:00 local. Past slots before the window
+        // (e.g. yesterday before 23:00 local) are not fetched, so the left edge of the
+        // window may still be empty.
+        val slots = data.tariffSlots.filter { it.validTo > windowStart && it.validFrom < windowEnd }
         if (slots.isEmpty()) return bmp
 
         val bucket = bucketOf(widthDp, heightDp)
-        // Tight padding — plot should fill almost the full widget height.
-        val padTop = if (bucket == Bucket.Small) 1f * density else 2f * density
+        // Padding: small bucket stays tighter (no axes); medium/large need
+        // room above for the y-axis top label (40p) and day-boundary labels,
+        // and a small breathing strip below the hour-tick labels.
+        val padTop = if (bucket == Bucket.Small) 4f * density else 12f * density
         val padX = if (bucket == Bucket.Small) 4f * density else 8f * density
-        val padBottom = if (bucket == Bucket.Small) 1f * density else 2f * density
+        val padBottom = if (bucket == Bucket.Small) 4f * density else 6f * density
         val plot = RectF(padX, padTop, w - padX, h - padBottom)
         if (bucket != Bucket.Small) {
             plot.bottom -= 13f * density  // room for hour labels under the plot
             plot.left += 32f * density    // room for y-axis labels left of the plot
         }
 
-        val xStart = slots.first().validFrom.toEpochMilli()
-        val xEnd = slots.last().validTo.toEpochMilli()
+        val xStart = windowStart.toEpochMilli()
+        val xEnd = windowEnd.toEpochMilli()
+        val todayLocal = now.atZone(zone).toLocalDate()
         // Fixed y-axis: -5p..40p. Keeps the chart shape comparable day-to-day
         // and leaves visible space below 0p so free-phase slots aren't squashed
         // against the x-axis.
@@ -73,7 +81,9 @@ object ChartCanvas {
         // free-phase bands
         val bandPaint = Paint().apply { color = theme.freeBand; style = Paint.Style.FILL }
         slots.filter { it.isFree }.forEach { s ->
-            c.drawRect(x(s.validFrom), plot.top, x(s.validTo), plot.bottom, bandPaint)
+            val left = x(s.validFrom)
+            val right = x(s.validTo).coerceAtMost(plot.right)
+            c.drawRect(left, plot.top, right, plot.bottom, bandPaint)
         }
 
         // SVT line (large bucket only)
@@ -96,7 +106,9 @@ object ChartCanvas {
         }
         val path = Path()
         slots.forEachIndexed { i, s ->
-            val left = x(s.validFrom); val right = x(s.validTo); val yp = y(s.pence)
+            val left = x(s.validFrom)
+            val right = x(s.validTo).coerceAtMost(plot.right)
+            val yp = y(s.pence)
             if (i == 0) path.moveTo(left, yp) else path.lineTo(left, yp)
             path.lineTo(right, yp)
         }
@@ -125,7 +137,7 @@ object ChartCanvas {
                 c.drawLine(x(now), plot.top, x(now), plot.bottom, nowPaint)
             }
 
-            drawAxes(c, plot, slots, xStart, xEnd, yMin, yRange, theme, density)
+            drawAxes(c, plot, windowStart, todayLocal, xStart, xEnd, yMin, yRange, theme, density)
         }
 
         // last-updated badge — only shown when the cache is stale (>26h old)
@@ -144,7 +156,9 @@ object ChartCanvas {
     }
 
     private fun drawAxes(
-        c: Canvas, plot: RectF, slots: List<Slot>, xStart: Long, xEnd: Long,
+        c: Canvas, plot: RectF,
+        windowStart: Instant, todayLocal: LocalDate,
+        xStart: Long, xEnd: Long,
         yMin: Double, yRange: Double,
         theme: ChartTheme, density: Float,
     ) {
@@ -160,7 +174,7 @@ object ChartCanvas {
         // hour ticks at FreePhase phase changes: 06 (green→amber), 16 (amber→red),
         // 19 (red→amber), 23 (amber→green).
         val phaseChangeHours = setOf(6, 16, 19, 23)
-        var t = slots.first().validFrom.atZone(zone).withMinute(0).withSecond(0).withNano(0)
+        var t = windowStart.atZone(zone).withMinute(0).withSecond(0).withNano(0)
         while (t.toInstant().toEpochMilli() < xEnd) {
             if (t.hour in phaseChangeHours) {
                 val xp = plot.left + (t.toInstant().toEpochMilli() - xStart).toFloat() / (xEnd - xStart) * plot.width()
@@ -172,14 +186,15 @@ object ChartCanvas {
             t = t.plusHours(1)
         }
 
-        // day boundary label (start of new day)
-        slots.zipWithNext().firstOrNull { (a, b) ->
-            a.validFrom.atZone(zone).toLocalDate() != b.validFrom.atZone(zone).toLocalDate()
-        }?.let { (_, b) ->
-            val xp = plot.left + (b.validFrom.toEpochMilli() - xStart).toFloat() / (xEnd - xStart) * plot.width()
-            val label = dateFmt.format(b.validFrom)
-            val bold = TextPaint(text).apply { isFakeBoldText = true }
-            c.drawText(label, xp + 3f * density, plot.top + 12f * density, bold)
+        // Label both day boundaries that fall inside the fixed window:
+        // today 00:00 and tomorrow 00:00, both local-zone midnights.
+        val bold = TextPaint(text).apply { isFakeBoldText = true }
+        listOf(todayLocal, todayLocal.plusDays(1)).forEach { date ->
+            val midnight = date.atStartOfDay(zone).toInstant()
+            val xp = plot.left + (midnight.toEpochMilli() - xStart).toFloat() / (xEnd - xStart) * plot.width()
+            if (xp in plot.left..plot.right) {
+                c.drawText(dateFmt.format(midnight), xp + 3f * density, plot.top + 12f * density, bold)
+            }
         }
     }
 }
