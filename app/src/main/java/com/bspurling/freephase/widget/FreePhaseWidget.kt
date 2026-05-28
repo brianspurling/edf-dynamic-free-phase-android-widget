@@ -33,7 +33,9 @@ import com.bspurling.freephase.data.RateData
 import com.bspurling.freephase.data.RateRepository
 import com.bspurling.freephase.data.WorkerDiagnostic
 import com.bspurling.freephase.ui.MainActivity
+import com.bspurling.freephase.worker.RefreshTrigger
 import com.bspurling.freephase.worker.RefreshWorker
+import com.bspurling.freephase.worker.decideRefreshTrigger
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -59,16 +61,21 @@ class FreePhaseWidget : GlanceAppWidget() {
         val now: Instant = Instant.now()
         val density: Float = context.resources.displayMetrics.density
 
-        // If the cache has no slot still covering `now` (either empty, or every slot is in
-        // the past because the daily worker has been deferred for a day+), kick off a fresh
-        // fetch and render the placeholder. Without this the chart would silently render an
-        // empty bitmap and the widget would look blank with no hint that anything's wrong.
-        val effective = if (cached != null && cached.slotsFrom(now).isNotEmpty()) {
-            cached
-        } else {
-            RefreshWorker.enqueueBootstrap(context, force = true)
-            null
+        // Decide whether to kick off a fetch. Two cases beyond "cache is fresh":
+        //   1) Bootstrap — cache has no slot covering `now` (empty, or every slot is in the
+        //      past). The chart would render blank; force-replace any in-flight bootstrap
+        //      so the user sees recovery.
+        //   2) SafetyNet — cache has today's slots but no tomorrow's, we're inside the
+        //      publication window, and the worker hasn't recorded an attempt since today's
+        //      12:30 BST. Backstop for a drifted PeriodicWorkRequest. KEEP policy so we
+        //      don't stomp on a periodic worker that's already running.
+        when (decideRefreshTrigger(cached, diagnostic, now, ZONE)) {
+            RefreshTrigger.Bootstrap -> RefreshWorker.enqueueBootstrap(context, force = true)
+            RefreshTrigger.SafetyNet -> RefreshWorker.enqueueBootstrap(context, force = false)
+            RefreshTrigger.None -> Unit
         }
+
+        val effective = cached?.takeIf { it.slotsFrom(now).isNotEmpty() }
 
         provideContent { Content(effective, cached?.fetchedAt, diagnostic, theme, now, density) }
     }
@@ -143,7 +150,8 @@ class FreePhaseWidget : GlanceAppWidget() {
     }
 
     companion object {
+        private val ZONE: ZoneId = ZoneId.of("Europe/London")
         private val placeholderFmt: DateTimeFormatter =
-            DateTimeFormatter.ofPattern("d MMM HH:mm").withZone(ZoneId.of("Europe/London"))
+            DateTimeFormatter.ofPattern("d MMM HH:mm").withZone(ZONE)
     }
 }
