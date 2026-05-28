@@ -67,30 +67,38 @@ class RefreshWorker(
             to = to,
         ).toSlots()
 
-        when (decideRefresh(tariff, now, zone, retryUntilLocalHour = 18)) {
-            RefreshOutcome.Retry -> {
-                // Don't use WorkManager's exponential backoff — it caps at 1h and can
-                // easily skate past EDF's ~12:30 publication window for tomorrow's
-                // rates, leaving us stuck for the rest of the day. Instead schedule an
-                // explicit one-shot retry at 12:30 BST (or, if we're already past
-                // 12:30, at the next half-hour boundary).
-                scheduleRetryAroundPublication(applicationContext, now, zone)
-                return Triple(Result.success(), "Retry", "got ${tariff.size}, retry scheduled")
-            }
-            RefreshOutcome.GiveUp -> {
-                val existing = repo.read()
-                if (existing != null && existing.slotsFrom(now).isNotEmpty()) {
-                    return Triple(Result.success(), "GiveUp:kept", "fetched ${tariff.size}, kept cache")
-                }
-                if (tariff.isEmpty()) {
-                    return Triple(Result.retry(), "Retry", "past 18:00 but got 0 slots")
-                }
-                // Fall through: dead cache + non-empty fetched data → write what we have.
-            }
-            RefreshOutcome.Success -> Unit
+        val outcome = decideRefresh(tariff, now, zone, retryUntilLocalHour = 18)
+        val existing = repo.read()
+        val plan = planWork(
+            tariff = tariff,
+            refreshOutcome = outcome,
+            existingHasCurrentSlots = existing?.slotsFrom(now)?.isNotEmpty() == true,
+        )
+
+        if (plan.scheduleRetry) {
+            // Don't use WorkManager's exponential backoff — it caps at 1h and can easily
+            // skate past EDF's ~12:30 publication window for tomorrow's rates, leaving us
+            // stuck for the rest of the day. Instead schedule an explicit one-shot retry
+            // at 12:30 BST (or, if we're already past 12:30, at the next half-hour boundary).
+            scheduleRetryAroundPublication(applicationContext, now, zone)
         }
 
-        val cachedSvt = repo.read()?.svtPence
+        val workerResult = if (plan.workerResultRetry) Result.retry() else Result.success()
+
+        if (!plan.persist) {
+            val detail = when (plan.label) {
+                "Retry" -> if (tariff.isEmpty() && outcome == RefreshOutcome.GiveUp) {
+                    "past 18:00 but got 0 slots"
+                } else {
+                    "got ${tariff.size}, retry scheduled"
+                }
+                "GiveUp:kept" -> "fetched ${tariff.size}, kept cache"
+                else -> "got ${tariff.size}"
+            }
+            return Triple(workerResult, plan.label, detail)
+        }
+
+        val cachedSvt = existing?.svtPence
         val svt = if (repo.svtCacheStale()) {
             val svtDtos = client.fetchTariffRates(
                 productCode = SVT_PRODUCT,
@@ -107,7 +115,7 @@ class RefreshWorker(
         } else cachedSvt
 
         repo.write(RateData(tariffSlots = tariff, svtPence = svt, fetchedAt = now))
-        return Triple(Result.success(), "Wrote", "${tariff.size} slots, svt=${svt}")
+        return Triple(workerResult, plan.label, "${tariff.size} slots, svt=${svt}")
     }
 
     companion object {

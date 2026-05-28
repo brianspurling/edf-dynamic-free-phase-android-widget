@@ -38,4 +38,64 @@ class RefreshDecisionTest {
         val now = Instant.parse("2026-05-15T11:30:00Z")
         assertEquals(RefreshOutcome.Retry, decideRefresh(emptyList(), now, london, retryUntilLocalHour = 18))
     }
+
+    // --- planWork tests ---
+
+    private val anySlot = slot("2026-05-15T00:00:00Z", "2026-05-15T00:30:00Z")
+
+    @Test fun `planWork - Success persists with Wrote label`() {
+        val plan = planWork(
+            tariff = listOf(anySlot),
+            refreshOutcome = RefreshOutcome.Success,
+            existingHasCurrentSlots = true,
+        )
+        assertEquals(WorkPlan(persist = true, scheduleRetry = false, workerResultRetry = false, label = "Wrote"), plan)
+    }
+
+    @Test fun `planWork - Retry with empty tariff schedules retry, does not persist`() {
+        val plan = planWork(
+            tariff = emptyList(),
+            refreshOutcome = RefreshOutcome.Retry,
+            existingHasCurrentSlots = true,
+        )
+        assertEquals(WorkPlan(persist = false, scheduleRetry = true, workerResultRetry = false, label = "Retry"), plan)
+    }
+
+    @Test fun `planWork - Retry with non-empty tariff persists partial data and schedules retry`() {
+        // The new behaviour: if EDF returned 94 of 96 slots, write those 94 anyway so the user sees
+        // most of tomorrow's data, then schedule a retry to fetch the last few.
+        val plan = planWork(
+            tariff = listOf(anySlot),
+            refreshOutcome = RefreshOutcome.Retry,
+            existingHasCurrentSlots = true,
+        )
+        assertEquals(WorkPlan(persist = true, scheduleRetry = true, workerResultRetry = false, label = "Retry:wrote"), plan)
+    }
+
+    @Test fun `planWork - GiveUp with existing current slots keeps cache`() {
+        val plan = planWork(
+            tariff = listOf(anySlot),
+            refreshOutcome = RefreshOutcome.GiveUp,
+            existingHasCurrentSlots = true,
+        )
+        assertEquals(WorkPlan(persist = false, scheduleRetry = false, workerResultRetry = false, label = "GiveUp:kept"), plan)
+    }
+
+    @Test fun `planWork - GiveUp with dead cache and non-empty tariff rescues by writing`() {
+        val plan = planWork(
+            tariff = listOf(anySlot),
+            refreshOutcome = RefreshOutcome.GiveUp,
+            existingHasCurrentSlots = false,
+        )
+        assertEquals(WorkPlan(persist = true, scheduleRetry = false, workerResultRetry = false, label = "Wrote"), plan)
+    }
+
+    @Test fun `planWork - GiveUp with dead cache and empty tariff asks WorkManager to retry`() {
+        val plan = planWork(
+            tariff = emptyList(),
+            refreshOutcome = RefreshOutcome.GiveUp,
+            existingHasCurrentSlots = false,
+        )
+        assertEquals(WorkPlan(persist = false, scheduleRetry = false, workerResultRetry = true, label = "Retry"), plan)
+    }
 }
