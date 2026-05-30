@@ -96,7 +96,7 @@ class FreePhaseWidget : GlanceAppWidget() {
         val size = LocalSize.current
         val tapAction = actionStartActivity<MainActivity>()
 
-        val bitmap: Bitmap? = remember(size, data) {
+        val bitmap: Bitmap? = remember(size, data, diagnostic) {
             if (data == null || data.isEmpty) null
             else ChartCanvas.render(
                 data = data,
@@ -105,6 +105,7 @@ class FreePhaseWidget : GlanceAppWidget() {
                 theme = theme,
                 now = now,
                 density = density,
+                diagnostic = diagnostic,
             )
         }
 
