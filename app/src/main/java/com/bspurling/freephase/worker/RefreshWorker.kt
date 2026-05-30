@@ -52,6 +52,14 @@ class RefreshWorker(
         } catch (t: Throwable) {
             repo.recordAttempt(now, "Exception", "${t.javaClass.simpleName}: ${t.message}")
             runCatching { FreePhaseWidget().updateAll(applicationContext) }
+            // A thrown fetch (typically UnknownHostException when the worker wakes from Doze
+            // before DNS is restored) used to fall back solely to WorkManager's exponential
+            // backoff — the same drifted cadence we deliberately stopped trusting for the
+            // plan path (see scheduleRetryAroundPublication). Schedule the deterministic
+            // publication-window retry here too so a failure at ~12:30 still gets a timed
+            // re-attempt instead of skating past the window for the rest of the day. We keep
+            // Result.retry() as a belt-and-braces fallback.
+            runCatching { scheduleRetryAroundPublication(applicationContext, now, zone) }
             Result.retry()
         }
     }

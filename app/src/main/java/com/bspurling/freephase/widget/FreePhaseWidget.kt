@@ -66,12 +66,15 @@ class FreePhaseWidget : GlanceAppWidget() {
         //      past). The chart would render blank; force-replace any in-flight bootstrap
         //      so the user sees recovery.
         //   2) SafetyNet — cache has today's slots but no tomorrow's, we're inside the
-        //      publication window, and the worker hasn't recorded an attempt since today's
-        //      12:30 BST. Backstop for a drifted PeriodicWorkRequest. KEEP policy so we
-        //      don't stomp on a periodic worker that's already running.
+        //      publication window, and we haven't attempted in the last ~15 min. Backstop
+        //      for a drifted PeriodicWorkRequest. force=true (REPLACE) so a morning bootstrap
+        //      that's stuck in WorkManager's exponential backoff doesn't make this a no-op —
+        //      REPLACE only touches the bootstrap work-name, not the separate periodic one,
+        //      so it can't stomp the periodic worker. The 15-min rate-limit in
+        //      decideRefreshTrigger keeps this from cancelling a fetch that's still in flight.
         when (decideRefreshTrigger(cached, diagnostic, now, ZONE)) {
             RefreshTrigger.Bootstrap -> RefreshWorker.enqueueBootstrap(context, force = true)
-            RefreshTrigger.SafetyNet -> RefreshWorker.enqueueBootstrap(context, force = false)
+            RefreshTrigger.SafetyNet -> RefreshWorker.enqueueBootstrap(context, force = true)
             RefreshTrigger.None -> Unit
         }
 
