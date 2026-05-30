@@ -8,6 +8,7 @@ import android.graphics.Path
 import android.graphics.RectF
 import android.text.TextPaint
 import com.bspurling.freephase.data.RateData
+import com.bspurling.freephase.data.WorkerDiagnostic
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -19,6 +20,7 @@ object ChartCanvas {
     private val zone = ZoneId.of("Europe/London")
     private val timeFmt = DateTimeFormatter.ofPattern("HH").withZone(zone)
     private val dateFmt = DateTimeFormatter.ofPattern("EEE d MMM").withZone(zone)
+    private val hourMinFmt = DateTimeFormatter.ofPattern("HH:mm").withZone(zone)
 
     enum class Bucket { Small, Medium, Large }
 
@@ -35,6 +37,7 @@ object ChartCanvas {
         theme: ChartTheme,
         now: Instant,
         density: Float = 1f,
+        diagnostic: WorkerDiagnostic? = null,
     ): Bitmap {
         val w = (widthDp * density).toInt().coerceAtLeast(1)
         val h = (heightDp * density).toInt().coerceAtLeast(1)
@@ -144,11 +147,16 @@ object ChartCanvas {
         if (bucket != Bucket.Small) {
             val isStale = Duration.between(data.fetchedAt, now) > Duration.ofHours(26)
             if (isStale) {
-                val fetchedHour = data.fetchedAt.atZone(zone).hour
-                val fetchedMin = data.fetchedAt.atZone(zone).minute
-                val label = "⚠ stale ${"%02d".format(fetchedHour)}:${"%02d".format(fetchedMin)}"
                 val tp = TextPaint().apply { color = theme.stale; textSize = 11f * density; isAntiAlias = true }
+                val label = "⚠ stale ${hourMinFmt.format(data.fetchedAt)}"
                 c.drawText(label, plot.right - tp.measureText(label), plot.top + 11f * density, tp)
+                // When stale, also surface what the refresh worker last did and when, so a
+                // screenshot alone tells us whether it's erroring, retrying, or giving up —
+                // the diagnostic is otherwise only visible on the blank loading placeholder.
+                if (diagnostic != null) {
+                    val diagLabel = "${diagnostic.outcome} ${hourMinFmt.format(diagnostic.attemptedAt)}"
+                    c.drawText(diagLabel, plot.right - tp.measureText(diagLabel), plot.top + 24f * density, tp)
+                }
             }
         }
 
