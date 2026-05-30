@@ -111,7 +111,24 @@ class RefreshTriggerTest {
         )
     }
 
-    @Test fun `today-only cache at 13-00 BST with attempt at 12-30 BST today - no trigger`() {
+    @Test fun `today-only cache at 13-00 BST with attempt at 12-30 BST today - safety net (lockout fixed)`() {
+        // Regression: the old guard suppressed on ANY attempt since 12:30, so a single failed
+        // 12:30 fetch muted the safety net for the rest of the window. 30 min have now passed
+        // and the cache still lacks tomorrow, so we must re-attempt regardless of outcome.
+        val now = london("2026-05-28", "13:00")
+        val cached = rateData(
+            slots = listOf(slot("2026-05-28T00:00:00Z", "2026-05-28T22:30:00Z", 18.0)),
+            fetchedAt = london("2026-05-27", "12:30"),
+        )
+        assertEquals(
+            RefreshTrigger.SafetyNet,
+            decideRefreshTrigger(cached = cached, diagnostic = diag(london("2026-05-28", "12:30"), outcome = "Exception"), now = now, zone = london),
+        )
+    }
+
+    @Test fun `recent attempt within rate-limit window - no trigger`() {
+        // Don't hammer a fetch that's still in flight (or just completed and re-entered
+        // provideGlance via the worker's own updateAll): suppress for ~15 min after an attempt.
         val now = london("2026-05-28", "13:00")
         val cached = rateData(
             slots = listOf(slot("2026-05-28T00:00:00Z", "2026-05-28T22:30:00Z", 18.0)),
@@ -119,12 +136,25 @@ class RefreshTriggerTest {
         )
         assertEquals(
             RefreshTrigger.None,
-            decideRefreshTrigger(cached = cached, diagnostic = diag(london("2026-05-28", "12:30")), now = now, zone = london),
+            decideRefreshTrigger(cached = cached, diagnostic = diag(london("2026-05-28", "12:55"), outcome = "Exception"), now = now, zone = london),
+        )
+    }
+
+    @Test fun `attempt just outside rate-limit window - safety net`() {
+        // 16 min since the last attempt (> 15 min rate-limit) → re-attempt.
+        val now = london("2026-05-28", "13:00")
+        val cached = rateData(
+            slots = listOf(slot("2026-05-28T00:00:00Z", "2026-05-28T22:30:00Z", 18.0)),
+            fetchedAt = london("2026-05-27", "12:30"),
+        )
+        assertEquals(
+            RefreshTrigger.SafetyNet,
+            decideRefreshTrigger(cached = cached, diagnostic = diag(london("2026-05-28", "12:44"), outcome = "Exception"), now = now, zone = london),
         )
     }
 
     @Test fun `today-only cache at 12-30 BST exactly with attempt at 12-30 BST exactly - no trigger`() {
-        // Diagnostic.attemptedAt == today's 12:30 BST: counts as "attempted since today 12:30".
+        // Diagnostic.attemptedAt == now: zero elapsed, inside the rate-limit window.
         val now = london("2026-05-28", "12:30")
         val cached = rateData(
             slots = listOf(slot("2026-05-28T00:00:00Z", "2026-05-28T22:30:00Z", 18.0)),
@@ -172,9 +202,9 @@ class RefreshTriggerTest {
         )
     }
 
-    @Test fun `attempt earlier today before 12-30 still counts as not-yet-attempted-since-12-30`() {
-        // E.g. a bootstrap kicked off by FreePhaseApp.onCreate at 09:00 today doesn't count
-        // as the daily publication-window attempt — we still want to fetch after 12:30.
+    @Test fun `attempt hours ago (outside rate-limit) - safety net`() {
+        // E.g. a bootstrap kicked off by FreePhaseApp.onCreate at 09:00 today is long past the
+        // rate-limit window by 13:00, so we still want to fetch tomorrow's slots.
         val now = london("2026-05-28", "13:00")
         val cached = rateData(
             slots = listOf(slot("2026-05-28T00:00:00Z", "2026-05-28T22:30:00Z", 18.0)),
